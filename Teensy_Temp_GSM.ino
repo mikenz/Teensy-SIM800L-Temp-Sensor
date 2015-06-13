@@ -4,7 +4,8 @@
 // Setup the thermometer
 #include <OneWire.h>
 #include <DallasTemperature.h>
-OneWire oneWire(7);
+OneWire oneWire(2);
+//OneWire oneWire(7);
 DallasTemperature sensors(&oneWire);
 DeviceAddress thermometer;
 int16_t tempC = 0;
@@ -12,6 +13,7 @@ int16_t tempC = 0;
 // GSM Serial connection
 #define HWSERIAL Serial1
 char incomingByte;
+String IMEI;
 
 // Sleep
 #include <Snooze.h>
@@ -31,6 +33,38 @@ void setup() {
     sensors.begin();
     sensors.getAddress(thermometer, 0);
     sensors.setResolution(thermometer, 12);
+    
+    // Get the IMEI number for the SIM800L
+    gsmOn();
+    //Serial.println("Get the IMEI number");
+    HWSERIAL.println("AT+GSN");
+    waitTime = 0;
+    while (waitTime < 4000) {
+        if (!HWSERIAL.available()) {
+        	// Nothing in the buffer, wait a bit
+            delay(5);
+            continue;
+        }
+        incomingByte = HWSERIAL.read();
+        if (incomingByte == 0) {
+        	// Ignore NULL character
+        	continue;
+        }
+        //Serial.print(incomingByte);
+        
+        if (incomingByte == '\n' && IMEI.length() != 17) {
+            // Not the line we're looking for
+            IMEI = "";
+        }
+        if (incomingByte == '\n' && IMEI.length() == 17) {
+            // Found the IMEI number
+            //Serial.print("Found the IMEI number: ");
+            IMEI.trim();
+            //Serial.println(IMEI);
+            break;
+        }
+        IMEI += incomingByte;
+    }
 }
 
 void loop() {
@@ -118,10 +152,15 @@ void setupAndSend() {
     waitTime = 0;
     while (waitTime < 4000) {
         if (!HWSERIAL.available()) {
+        	// Nothing in the buffer, wait a bit
             delay(5);
             continue;
         }
         incomingByte = HWSERIAL.read();
+        if (incomingByte == 0) {
+        	// Ignore NULL character
+        	continue;
+        }
         //Serial.print(incomingByte);
         batt += incomingByte;
         
@@ -159,7 +198,9 @@ void setupAndSend() {
     waitForOK();
 
     // Set the User agent
-    HWSERIAL.println("AT+HTTPPARA=\"UA\",\"Sensor 002\"");
+    HWSERIAL.print("AT+HTTPPARA=\"UA\",\"");
+    HWSERIAL.print(IMEI);
+    HWSERIAL.println("\"");
     waitForOK();
 
     // Set the URL
@@ -194,10 +235,17 @@ bool waitFor(String searchString, int waitTimeMS) {
     String foundText;
     while (waitTime < waitTimeMS) {
         if (!HWSERIAL.available()) {
+        	// Nothing in the buffer, wait a bit
             delay(5);
             continue;
         }
+        
+        // Get the next character in the buffer
         incomingByte = HWSERIAL.read();
+        if (incomingByte == 0) {
+        	// Ignore NULL character
+        	continue;
+        }
         //Serial.print(incomingByte);
         foundText += incomingByte;
         
@@ -210,7 +258,7 @@ bool waitFor(String searchString, int waitTimeMS) {
     }
     
     // Timed out before finding it
-    //Serial.println("'OK' not found, timed out");
+    //Serial.println("string not found, timed out");
     return false;
 }
 
